@@ -209,10 +209,10 @@ FROM releves ORDER BY id DESC LIMIT 20;
 Le lecteur de badges est lu sur un port série (UART), activé par `--badge-port` ; le débit par défaut est 9600 bauds 8N1 (`--badge-baud`). Qt SerialPort est requis : `libqt5serialport5-dev` pour Qt 5, `qt6-serialport-dev` pour Qt 6.
 
 ```bash
-./build/frigo --fullscreen --interface can0 --badge-port /dev/ttyUSB0 --badge-baud 9600
+./build/frigo --fullscreen --interface can0 --badge-port /dev/ttyS2 --badge-baud 9600
 ```
 
-Une trame = un badge, en ASCII, terminée par CR, LF ou ETX (`0x03`) ; un STX (`0x02`) recommence la trame. Le même code répété en moins de 3 secondes (badge resté devant l’antenne) est ignoré. Le format se modifie uniquement dans `BadgeReader::feed`.
+Le lecteur émet une trame binaire par badge, par exemple `02 09 01 b2 f8 a9 49 a2 03` : STX (`0x02`), longueur totale de la trame (`0x09`), type (`0x01`), UID sur 4 octets, XOR des octets de la longueur à l’UID (`0xa2`), ETX (`0x03`). Une trame dont la longueur, le XOR ou l’ETX est incorrect est rejetée ; une trame incomplète est abandonnée après 200 ms de silence. Le code du badge est **la trame entière de 9 octets en hexadécimal majuscule**, ici `020901B2F8A949A203`. Le même code répété en moins de 3 secondes (badge resté devant l’antenne) est ignoré. Le format se modifie uniquement dans `BadgeReader::feed`.
 
 Les badges autorisés sont dans la table `badges` du fichier SQLite de l’historique (`--database`, par défaut `~/frigo.sqlite`), créée automatiquement :
 
@@ -222,8 +222,8 @@ Les badges autorisés sont dans la table `badges` du fichier SQLite de l’histo
 | `proprietaire` | Nom affiché dans la notification |
 
 ```bash
-sqlite3 "$HOME/frigo.sqlite" "INSERT INTO badges(badge_code,proprietaire) VALUES('0A1B2C3D4E','Hamza');"
-sqlite3 "$HOME/frigo.sqlite" "DELETE FROM badges WHERE badge_code='0A1B2C3D4E';"
+sqlite3 "$HOME/frigo.sqlite" "INSERT INTO badges(badge_code,proprietaire) VALUES('020901B2F8A949A203','Hamza');"
+sqlite3 "$HOME/frigo.sqlite" "DELETE FROM badges WHERE badge_code='020901B2F8A949A203';"
 ```
 
 Badge présent dans la table : notification « Accès autorisé » avec le nom du propriétaire, et émission de la trame CAN `0x107` = `08` (DLC 1), placée en tête de la file d’envoi. Badge absent : notification « Accès refusé », aucune trame. Si le CAN est déconnecté, un badge connu est refusé avec le motif affiché. La notification disparaît après 4 secondes ou au toucher.

@@ -10,13 +10,17 @@ class AccessTests : public QObject {
 private slots:
  void readerSplitsFramesAndIgnoresRepeats(){
   BadgeReader r;QSignalSpy read(&r,&BadgeReader::badgeRead);
-  r.feed(QByteArray::fromHex("02")+"0A1B2C");QCOMPARE(read.size(),0); // Frame split across two reads.
-  r.feed("3D4E"+QByteArray::fromHex("03"));QCOMPARE(read.size(),1);QCOMPARE(read[0][0].toString(),QString("0A1B2C3D4E"));
-  r.feed("ABC123\r\n");QCOMPARE(read.size(),2);QCOMPARE(read[1][0].toString(),QString("ABC123"));
-  r.feed("ABC123\r\n");QCOMPARE(read.size(),2); // Badge still on the antenna.
-  r.feed("junk"+QByteArray::fromHex("02")+"777\n");QCOMPARE(read.size(),3);QCOMPARE(read[2][0].toString(),QString("777"));
-  r.repeatMs=0;r.feed("777\n");QCOMPARE(read.size(),4);
-  r.feed("\r\n\r\n");QCOMPARE(read.size(),4);
+  const auto frame=QByteArray::fromHex("020901b2f8a949a203"); // Captured from the real reader.
+  r.feed(frame.left(4));QCOMPARE(read.size(),0); // Frame split across two reads.
+  r.feed(frame.mid(4));QCOMPARE(read.size(),1);QCOMPARE(read[0][0].toString(),QString("020901B2F8A949A203"));
+  r.feed(frame);QCOMPARE(read.size(),1); // Badge still on the antenna.
+  // UID containing STX and ETX bytes, preceded by noise that looks like a frame start.
+  const auto tricky=QByteArray::fromHex("0209010203020308")+QByteArray::fromHex("03");
+  r.feed(QByteArray::fromHex("ff0207")+tricky);QCOMPARE(read.size(),2);QCOMPARE(read[1][0].toString(),QString("020901020302030803"));
+  r.repeatMs=0;
+  r.feed(QByteArray::fromHex("020901b2f8a949a303"));QCOMPARE(read.size(),2); // Wrong checksum.
+  r.feed(frame+frame);QCOMPARE(read.size(),4);
+  r.feed(frame.left(5));QTest::qWait(250);r.feed(frame);QCOMPARE(read.size(),5); // Truncated frame is dropped after a pause.
  }
  void storePersistsNextToHistory(){
   QTemporaryDir dir;const auto path=dir.filePath("frigo.sqlite");
@@ -33,10 +37,10 @@ private slots:
   BadgeStore closed;QVERIFY(!closed.owner("0A1B2C"));QVERIFY(!closed.error.isEmpty());
  }
  void knownBadgeOpensDoorOnCan(){
-  Controller c(true,"test");BadgeStore s;QVERIFY(s.open(":memory:"));QVERIFY(s.add("0A1B2C","Hamza"));
+  Controller c(true,"test");BadgeStore s;QVERIFY(s.open(":memory:"));QVERIFY(s.add("020901b2f8a949a203","Hamza"));
   AccessControl a(&c,&s);BadgeReader r;connect(&r,&BadgeReader::badgeRead,&a,&AccessControl::check);
   QSignalSpy granted(&a,&AccessControl::granted),denied(&a,&AccessControl::denied),sent(&c,&Controller::transmitted);
-  r.feed("0a1b2c\r\n");
+  r.feed(QByteArray::fromHex("020901b2f8a949a203"));
   QCOMPARE(granted.size(),1);QCOMPARE(denied.size(),0);QCOMPARE(granted[0][1].toString(),QString("Hamza"));
   QTRY_COMPARE(sent.size(),1);
   QCOMPARE(sent[0][0].toUInt(),uint(0x107));QCOMPARE(sent[0][1].toByteArray(),QByteArray::fromHex("08"));QVERIFY(!sent[0][2].toBool());

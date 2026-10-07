@@ -3,7 +3,7 @@
 #include <QSerialPort>
 #include <QElapsedTimer>
 
-// Lecteur de badges sur UART : une trame ASCII par badge, terminee par CR, LF ou ETX.
+// Lecteur de badges sur UART : trame binaire STX, longueur, type, UID, XOR, ETX.
 class BadgeReader : public QObject {
  Q_OBJECT
 public:
@@ -18,7 +18,7 @@ private:
  QSerialPort port;
  QByteArray buffer;
  QString lastCode;
- QElapsedTimer lastRead;
+ QElapsedTimer lastRead, gap;
  int repeatMs=3000;
- void complete();
+ void complete(const QByteArray &frame);
 };
