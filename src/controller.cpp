@@ -218,6 +218,12 @@ void Controller::relay(int pack,int bit,bool active) {
  if(!maintenanceActive||!synced||busy||pack<0||pack>1||bit<0||bit> (pack==0?4:3)||packs[pack]<0)return;
  auto value=active ? packs[pack]|(1<<bit):packs[pack]&~(1<<bit);enqueue(0x106+pack,Protocol::encode(value,1));
 }
+bool Controller::openDoor() {
+ if(!simulation && (!device || device->state()!=QCanBusDevice::ConnectedState))return false;
+ // Badge access: 0x107 = 08. Sent ahead of any queued settings so the door does not wait for them.
+ queue.prepend({0x107,QByteArray(1,char(0x08)),false});if(!sender.isActive())sender.start();
+ return true;
+}
 void Controller::sound(bool on) {if(simulation)return;const auto path=on?alarmStart:alarmStop;if(!path.isEmpty())QProcess::startDetached(path,QStringList{});}
 void Controller::acknowledge(){sound(false);alarm.clear();status="Acquittement local (aucune commande CAN définie)";emit changed();}
 void Controller::enableRecovery(int silenceMs){

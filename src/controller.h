@@ -19,6 +19,7 @@ public:
  void requestMaintenance();
  void relay(int pack,int bit,bool active);
  void acknowledge();
+ bool openDoor();
  bool fresh(int index) const;
  double mean() const;
  Protocol::Config config{};

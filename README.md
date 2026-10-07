@@ -16,7 +16,7 @@ Qt 5.15 est pris en charge pour utiliser les paquets de cette distribution ; le 
 
 ```bash
 sudo apt update
-sudo apt install build-essential cmake qtbase5-dev libqt5sql5-sqlite libqt5serialbus5-dev libqt5serialbus5-plugins network-manager can-utils
+sudo apt install build-essential cmake qtbase5-dev libqt5sql5-sqlite libqt5serialport5-dev libqt5serialbus5-dev libqt5serialbus5-plugins network-manager can-utils
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j2
 ctest --test-dir build --output-on-failure
@@ -203,6 +203,32 @@ SELECT id, datetime(timestamp_ms/1000, 'unixepoch'), sent,
        send_attempts, last_http_status
 FROM releves ORDER BY id DESC LIMIT 20;
 ```
+
+## Contrôle d’accès par badge
+
+Le lecteur de badges est lu sur un port série (UART), activé par `--badge-port` ; le débit par défaut est 9600 bauds 8N1 (`--badge-baud`). Qt SerialPort est requis : `libqt5serialport5-dev` pour Qt 5, `qt6-serialport-dev` pour Qt 6.
+
+```bash
+./build/frigo --fullscreen --interface can0 --badge-port /dev/ttyUSB0 --badge-baud 9600
+```
+
+Une trame = un badge, en ASCII, terminée par CR, LF ou ETX (`0x03`) ; un STX (`0x02`) recommence la trame. Le même code répété en moins de 3 secondes (badge resté devant l’antenne) est ignoré. Le format se modifie uniquement dans `BadgeReader::feed`.
+
+Les badges autorisés sont dans la table `badges` du fichier SQLite de l’historique (`--database`, par défaut `~/frigo.sqlite`), créée automatiquement :
+
+| Colonne | Contenu |
+| --- | --- |
+| `badge_code` | Code lu sur l’UART, clé primaire, insensible à la casse |
+| `proprietaire` | Nom affiché dans la notification |
+
+```bash
+sqlite3 "$HOME/frigo.sqlite" "INSERT INTO badges(badge_code,proprietaire) VALUES('0A1B2C3D4E','Hamza');"
+sqlite3 "$HOME/frigo.sqlite" "DELETE FROM badges WHERE badge_code='0A1B2C3D4E';"
+```
+
+Badge présent dans la table : notification « Accès autorisé » avec le nom du propriétaire, et émission de la trame CAN `0x107` = `08` (DLC 1), placée en tête de la file d’envoi. Badge absent : notification « Accès refusé », aucune trame. Si le CAN est déconnecté, un badge connu est refusé avec le motif affiché. La notification disparaît après 4 secondes ou au toucher.
+
+En simulation sans `--database`, la table est en mémoire avec le badge de démonstration `1234567890` ; `--badge-test CODE` simule une lecture une seconde après le démarrage (simulation uniquement).
 
 ## Réseau et clavier
 

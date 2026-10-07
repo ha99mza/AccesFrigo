@@ -11,6 +11,7 @@ class Window : public QWidget {
   public:
     explicit Window(Controller *controller, CanHistory *history=nullptr);
     void preview(const QString &screen);
+    void notify(bool positive, const QString &title, const QString &detail);
 
   protected:
     void paintEvent(QPaintEvent *) override;
@@ -40,6 +41,9 @@ class Window : public QWidget {
     QString overlay, pin, pinMessage, firstPin, newPin, confirmPin, pinField = "new";
     QString savedAt = "—", calSavedAt = "—", networkMessage, selectedSsid;
     QStringList networks;
+    QString noticeTitle, noticeDetail;
+    bool noticePositive = false;
+    QTimer noticeTimer;
     QColor bg, panel, line, tx, muted, accent = "#38bdf8", red = "#ef4444", amber = "#f59e0b",
                                        green = "#4ade80";
     QPainter *p = nullptr;
@@ -61,6 +65,7 @@ class Window : public QWidget {
     void maintenancePage(int top, int height);
     void networkPage(int top, int height);
     void pinOverlay();
+    void notice();
     void passwordPage(int top);
     void pinPress(const QString &key);
     void passwordPress(const QString &key);

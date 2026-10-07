@@ -105,6 +105,44 @@ Window::Window(Controller *controller, CanHistory *storage) : c(controller), his
             update();
     });
     pulse->start(80);
+    noticeTimer.setSingleShot(true);
+    noticeTimer.setInterval(4000);
+    connect(&noticeTimer, &QTimer::timeout, this, [this] {
+        noticeTitle.clear();
+        update();
+    });
+}
+void Window::notify(bool positive, const QString &title, const QString &detail) {
+    noticePositive = positive;
+    noticeTitle = title;
+    noticeDetail = detail;
+    noticeTimer.start();
+    update();
+}
+void Window::notice() {
+    QColor color = noticePositive ? green : red;
+    QRectF card(232, 206, 560, 168);
+    p->fillRect(QRectF(0, 0, 1024, 600), QColor(6, 9, 12, 150));
+    box(card, panel, color, 8);
+    p->fillRect(QRectF(card.left() + 1, card.top() + 8, 5, card.height() - 16), color);
+    p->setBrush(color);
+    p->setPen(Qt::NoPen);
+    p->drawEllipse(QRectF(264, 258, 64, 64));
+    p->setPen(QPen(panel, 6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    if (noticePositive)
+        p->drawPolyline(QPolygonF(QVector<QPointF>{{281, 291}, {292, 302}, {312, 279}}));
+    else {
+        p->drawLine(QPointF(284, 278), QPointF(308, 302));
+        p->drawLine(QPointF(308, 278), QPointF(284, 302));
+    }
+    text({352, 232, 416, 40}, noticeTitle, 28, color, 700);
+    text({352, 278, 416, 72}, noticeDetail, 18, tx, 500, false,
+         Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap);
+    action(card, [this] {
+        noticeTimer.stop();
+        noticeTitle.clear();
+        update();
+    });
 }
 void Window::text(QRectF r, const QString &value, int size, QColor color, int weight, bool mono, int align,
                   qreal spacing) {
@@ -209,6 +247,8 @@ void Window::paintEvent(QPaintEvent *) {
     }
     if (!overlay.isEmpty())
         pinOverlay();
+    if (!noticeTitle.isEmpty())
+        notice();
     p = nullptr;
 }
 void Window::header() {
@@ -235,7 +275,7 @@ void Window::header() {
     text({711, 0, 89, 56}, now.toString("HH:mm:ss"), 16, tx, 500, true);
     text({815, 0, 107, 56}, now.toString("dd/MM/yyyy"), 14, muted, 400, true);
     button(
-        {940, 10, 64, 36}, dark ? "JOUR" : "NUIT",
+        {940, 10, 64, 36}, dark ? "CLAIR" : "SOMBRE",
         [this] {
             dark = !dark;
             update();
