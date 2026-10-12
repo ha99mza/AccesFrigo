@@ -328,29 +328,29 @@ void Window::temperaturePage(int top, int height) {
     f.setLetterSpacing(QFont::AbsoluteSpacing, -4.5);
     p->setFont(f);
     QFontMetricsF fm(f);
-    double center = (top + 62 + card.bottom() - 104) / 2,
-           baseline = center + (fm.ascent() - fm.descent()) / 2;
+    double center = (top + 62 + card.bottom()) / 2, baseline = center + (fm.ascent() - fm.descent()) / 2;
     p->setPen(out ? red : tx);
     p->drawText(QPointF(44, baseline), str);
     double numberWidth = fm.horizontalAdvance(str);
     p->setFont(plexFont(52, 400, true));
     p->setPen(muted);
     p->drawText(QPointF(44 + numberWidth + 10, baseline), "°C");
-    double y = card.bottom() - 89;
-    rule(44, y, 980, y);
-    rule(349, y + 14, 349, card.bottom() - 18);
-    rule(664, y + 14, 664, card.bottom() - 18);
-    QStringList titles = {"PLAGE AUTORISÉE", "ÉVAPORATEUR", "DERNIER DÉGIVRAGE"},
-                vals = {c->synced ? QString("%1 … %2 °C")
-                                        .arg(c->config[0] / 10., 0, 'f', 1)
-                                        .arg(c->config[1] / 10., 0, 'f', 1)
-                                  : "—",
-                        c->fresh(3) ? QString::number(c->temperatures[3], 'f', 1) + " °C" : "— °C", "—"};
-    for (int i = 0; i < 3; ++i) {
-        double x = 44 + i * 315;
-        text({x, y + 14, 296, 18}, titles[i], 12, muted, 400, false, Qt::AlignLeft | Qt::AlignVCenter, 1.2);
-        text({x, y + 38, 296, 29}, vals[i], 22, tx, 500, true);
-    }
+    // Right column: allowed range above, evaporator below.
+    rule(554, top + 62, 554, card.bottom() - 18);
+    rule(586, center, 980, center);
+    QString allowed = c->synced ? QString("%1 … %2")
+                                      .arg(c->config[0] / 10., 0, 'f', 1)
+                                      .arg(c->config[1] / 10., 0, 'f', 1)
+                                : "—";
+    text({586, center - 116, 394, 24}, "PLAGE AUTORISÉE", 16, muted, 600, false,
+         Qt::AlignLeft | Qt::AlignVCenter, 1.6);
+    text({586, center - 84, 394, 60}, allowed, 44, tx, 600, true);
+    double allowedWidth = QFontMetricsF(plexFont(44, 600, true)).horizontalAdvance(allowed);
+    text({586 + allowedWidth + 14, center - 76, 60, 52}, "°C", 28, muted, 400, true);
+    text({586, center + 24, 394, 24}, "ÉVAPORATEUR", 16, muted, 600, false, Qt::AlignLeft | Qt::AlignVCenter,
+         1.6);
+    text({586, center + 56, 394, 60},
+         c->fresh(3) ? QString::number(c->temperatures[3], 'f', 1) + " °C" : "— °C", 44, tx, 600, true);
 }
 void Window::historyPage(int top, int height) {
     text({20, qreal(top + 16), 580, 52}, "HISTORIQUE TEMPÉRATURE", 14, muted, 600, false,
