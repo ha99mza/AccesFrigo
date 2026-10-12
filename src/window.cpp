@@ -500,8 +500,9 @@ void Window::alarmPage(int top, int height) {
         auto log = c->alarmLog[i];
         box({20, y, 984, 86}, panel, line);
         p->fillRect(QRectF(20, y + 1, 4, 84), red);
-        text({38, y + 16, 96, 54}, log.mid(6, 8), 15, muted, 400, true);
-        text({150, y + 12, 630, 32}, log.mid(17).trimmed(), 19, tx, 600);
+        text({38, y + 16, 100, 26}, log.left(10), 15, tx, 500, true);
+        text({38, y + 44, 100, 26}, log.mid(11, 8), 15, muted, 400, true);
+        text({150, y + 12, 630, 32}, log.mid(19).trimmed(), 19, tx, 600);
         text({150, y + 45, 630, 24}, "Événement reçu du contrôleur", 14, muted);
         box({838, y + 27, 146, 32}, Qt::transparent, line, 3);
         text({838, y + 27, 146, 32}, i == 0 && !c->alarm.isEmpty() ? "ACTIVE" : "JOURNALISÉE", 13,

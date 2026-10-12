@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QProcess>
 #include <QVariant>
 #include <cmath>
@@ -15,7 +16,7 @@ Controller::Controller(bool sim,QString iface,QObject *parent,QString file):QObj
  if(settingsFile.isEmpty() && !simulation)
   settingsFile=QDir::homePath()+"/settings.json";
  if(settingsFile.startsWith("~/"))settingsFile=QDir::homePath()+settingsFile.mid(1);
- loadCache();
+ loadCache();loadAlarms();
  sender.setInterval(500);sender.setTimerType(Qt::PreciseTimer);sender.setSingleShot(true);
  deadline.setSingleShot(true);deadline.setInterval(5000);
  maintenanceDeadline.setSingleShot(true);maintenanceDeadline.setInterval(5000);
@@ -127,6 +128,19 @@ void Controller::loadCache() {
  if(!Protocol::valid(loaded)||!signature.isDouble()||signature.toDouble()!=Protocol::signature(loaded))return;
  config=loaded;cacheValid=true;
 }
+// The last 10 alarms survive a restart, in alarms.json next to the settings file.
+QString Controller::alarmFile() const {return settingsFile.isEmpty()?QString():QFileInfo(settingsFile).absolutePath()+"/alarms.json";}
+void Controller::loadAlarms() {
+ QFile file(alarmFile());if(alarmFile().isEmpty()||!file.open(QIODevice::ReadOnly))return;
+ const auto entries=QJsonDocument::fromJson(file.readAll()).array();
+ for(const auto &entry:entries)if(entry.isString()&&alarmLog.size()<10)alarmLog.append(entry.toString());
+}
+void Controller::saveAlarms() {
+ if(alarmFile().isEmpty())return;
+ QSaveFile file(alarmFile());const auto data=QJsonDocument(QJsonArray::fromStringList(alarmLog)).toJson();
+ if(!QDir().mkpath(QFileInfo(alarmFile()).absolutePath())||!file.open(QIODevice::WriteOnly)||file.write(data)!=data.size()||!file.commit())
+  status="Echec de sauvegarde du journal des alarmes : "+file.errorString();
+}
 bool Controller::persist() {
  if(settingsFile.isEmpty())return simulation;
  QJsonObject values;for(int i=0;i<13;++i)values.insert(QString::number(0x300+i,16),double(config[i]));
@@ -176,8 +190,14 @@ void Controller::receive(quint32 id,const QByteArray &p) {
   }
  }
  else if(id==1 && p.size()==1) {
-  auto code=quint8(p[0]); activeErrors[code]=QDateTime::currentMSecsSinceEpoch(); alarm=Protocol::errorText(code);alarmLog.prepend(QDateTime::currentDateTime().toString("dd/MM HH:mm:ss")+"   "+alarm);
-  while(alarmLog.size()>500)alarmLog.removeLast();if(code==0x52)sound(true);
+  auto code=quint8(p[0]); const bool repeated=activeErrors.contains(code);
+  activeErrors[code]=QDateTime::currentMSecsSinceEpoch(); alarm=Protocol::errorText(code);
+  // The board repeats an active error: one journal entry per occurrence, not per frame.
+  if(!repeated){
+   alarmLog.prepend(QDateTime::currentDateTime().toString("dd/MM/yyyy HH:mm:ss")+"   "+alarm);
+   while(alarmLog.size()>10)alarmLog.removeLast();saveAlarms();
+  }
+  if(code==0x52)sound(true);
  }
  else if(id>=0x300 && id<=0x30c) {
   int i=id-0x300;auto v=Protocol::decode(p,4,Protocol::settings[i].signedValue);if(!v)return;

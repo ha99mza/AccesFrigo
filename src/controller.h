@@ -62,6 +62,9 @@ private:
  void fail(const QString &reason);
  bool persist();
  void loadCache();
+ QString alarmFile() const;
+ void loadAlarms();
+ void saveAlarms();
  void armDeadline();
  void sound(bool on);
 };
