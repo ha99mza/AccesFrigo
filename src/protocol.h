@@ -7,6 +7,8 @@ namespace Protocol {
 struct Setting { const char *label; const char *unit; double scale; bool signedValue; };
 extern const std::array<Setting,13> settings;
 using Config = std::array<qint64,13>;
+// An error (ID 0x001) stays active while the board repeats it; it ends after this silence.
+constexpr qint64 errorHoldMs = 5000;
 QByteArray encode(qint64 value, int bytes = 4);
 std::optional<qint64> decode(const QByteArray &data, int bytes, bool signedValue);
 quint16 signature(const Config &config);

@@ -78,6 +78,30 @@ private slots:
   {QSqlQuery q(writer.db);QVERIFY(q.exec("SELECT temperature_moyenne FROM releves"));QVERIFY(q.next());QCOMPARE(q.value(0).toDouble(),2.1);}
   writer.close();
  }
+ void faultyProbeLeavesMeanAndAlarmEndsWithErrors(){
+  Controller c(true,"test");const int raw[]={20,30,400};
+  for(int i=0;i<3;++i)c.receive(0x100+i,Protocol::encode(raw[i],2));QCOMPARE(c.mean(),15.0);
+  c.receive(1,QByteArray(1,char(0x23)));QVERIFY(c.sensorFault(2));QVERIFY(!c.sensorFault(0));
+  QCOMPARE(c.mean(),2.5);QCOMPARE(c.alarm,Protocol::errorText(0x23));
+  c.seen[0]-=7000;QVERIFY(std::isnan(c.mean())); // A silent healthy probe still invalidates the mean.
+  c.seen[0]+=7000;c.receive(1,QByteArray(1,char(0x21)));c.receive(1,QByteArray(1,char(0x22)));QVERIFY(std::isnan(c.mean()));
+  // Errors stop arriving: the alarm ends and the probes count again.
+  QSignalSpy changed(&c,&Controller::changed);c.errorTimeoutMs=50;
+  QTRY_VERIFY(c.alarm.isEmpty());QVERIFY(!changed.isEmpty());QVERIFY(!c.sensorFault(2));QCOMPARE(c.mean(),15.0);
+  // An error still repeated keeps its alarm while another one ends.
+  c.errorTimeoutMs=1500;c.receive(1,QByteArray(1,char(0x51)));QTest::qWait(1000);c.receive(1,QByteArray(1,char(0x53)));
+  QTest::qWait(1100);QCOMPARE(c.alarm,Protocol::errorText(0x53));QTRY_VERIFY(c.alarm.isEmpty());
+
+  QTemporaryDir dir;HistoryWriter writer;writer.open(dir.filePath("fault.sqlite"));writer.sampleTimer->stop();
+  for(int i=0;i<3;++i)writer.append(0x100+i,Protocol::encode(raw[i],2),30000);
+  writer.append(1,QByteArray(1,char(0x23)),30000); // Immediate row: CAP3 excluded.
+  for(int i=0;i<3;++i)writer.append(0x100+i,Protocol::encode(raw[i],2),30000+Protocol::errorHoldMs);
+  writer.snapshot(30000+Protocol::errorHoldMs); // Fault no longer repeated: CAP3 counts again.
+  {QSqlQuery q(writer.db);QVERIFY(q.exec("SELECT temperature_moyenne,temp_cap3 FROM releves ORDER BY id"));
+   QVERIFY(q.next());QCOMPARE(q.value(0).toDouble(),2.5);QCOMPARE(q.value(1).toDouble(),40.0);
+   QVERIFY(q.next());QCOMPARE(q.value(0).toDouble(),15.0);}
+  writer.close();
+ }
  void cloudRejectsUnconfirmedResponses_data(){
   QTest::addColumn<int>("status");QTest::addColumn<QByteArray>("response");
   QTest::newRow("HTTP failure despite success body")<<503<<QByteArray("{\"success\":true}");

@@ -49,6 +49,7 @@ void HistoryWriter::append(quint32 id,const QByteArray &p,qint64 timestamp) {
   set(11,(quint8(p[0])>>2)&1);set(12,quint8(p[0])&1);
   set(13,(quint8(p[0])>>1)&1);set(14,(quint8(p[0])>>3)&1);
  } else if(id==1 && p.size()==1){
+  if(quint8(p[0])>=0x21 && quint8(p[0])<=0x23)faults[quint8(p[0])-0x21]=timestamp;
   errors.append(QDateTime::fromMSecsSinceEpoch(timestamp,Qt::UTC).toString(Qt::ISODateWithMs)+
    QString(" 0x%1 : ").arg(quint8(p[0]),2,16,QChar('0'))+Protocol::errorText(quint8(p[0])));
   snapshot(timestamp,quint8(p[0]));
@@ -59,13 +60,15 @@ void HistoryWriter::snapshot(qint64 timestamp,int errorCode){
  QSqlQuery q(db);
  q.prepare("INSERT INTO releves(timestamp_ms,date_utc,temp_cap1,temp_cap2,temp_cap3,temp_eva,batterie,porte_ouverte,ventilateur_1,ventilateur_2,ventilateur_3,ventilateur_4,ventilateur_5,ventilateur_degivrage,lampe,compresseur,relais_porte,temperature_moyenne,erreur,cloud_context,cloud_error,event_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
  q.addBindValue(timestamp);q.addBindValue(QDateTime::fromMSecsSinceEpoch(timestamp,Qt::UTC).toString(Qt::ISODateWithMs));
- bool meanValid=true;double sum=0;
+ bool meanValid=true;double sum=0;int count=0;
  for(int i=0;i<15;++i){
   const bool fresh=seen[i]>0 && timestamp>=seen[i] && timestamp-seen[i]<6000 && values[i].isValid();
   q.addBindValue(fresh?values[i]:QVariant());
-  if(i<3){meanValid &= fresh;sum+=values[i].toDouble();}
+  // Same rule as Controller::mean(): a probe reporting a fault is left out of the mean.
+  const bool faulty=i<3 && faults[i]>0 && timestamp>=faults[i] && timestamp-faults[i]<Protocol::errorHoldMs;
+  if(i<3 && !faulty){meanValid &= fresh;sum+=values[i].toDouble();++count;}
  }
- q.addBindValue(meanValid?QVariant(std::round(sum/3*10)/10):QVariant());
+ q.addBindValue(meanValid&&count?QVariant(std::round(sum/count*10)/10):QVariant());
  q.addBindValue(errors.isEmpty()?QVariant():QVariant(errors.join("\n")));
  q.addBindValue(QString::fromUtf8(QJsonDocument(cloudContext).toJson(QJsonDocument::Compact)));
  q.addBindValue(errorCode<0?QVariant():QVariant(errorCode));

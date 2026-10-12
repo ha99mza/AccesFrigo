@@ -313,7 +313,13 @@ void Window::temperaturePage(int top, int height) {
     box(card, panel, line);
     text({44, qreal(top + 34), 277, 22}, "TEMPÉRATURE CHAMBRE", 14, muted, 600, false,
          Qt::AlignLeft | Qt::AlignVCenter, 1.96);
-    text({335, qreal(top + 34), 610, 22}, "moyenne 3 sondes · mise à jour 2 s", 13, muted, 400, true);
+    int probes = 0;
+    for (int i = 0; i < 3; ++i)
+        probes += !c->sensorFault(i);
+    text({335, qreal(top + 34), 610, 22},
+         probes == 3 ? QString("moyenne 3 sondes · mise à jour 2 s")
+                     : QString("moyenne %1 sonde%2 sur 3 · sonde en défaut exclue").arg(probes).arg(probes > 1 ? "s" : ""),
+         13, probes == 3 ? muted : amber, 400, true);
     double value = c->mean();
     QString str = std::isfinite(value) ? QString::number(value, 'f', 0) : "—";
     bool out =

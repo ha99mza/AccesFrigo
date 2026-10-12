@@ -23,6 +23,7 @@ Controller::Controller(bool sim,QString iface,QObject *parent,QString file):QObj
   waitingMaintenance=false;maintenanceActive=false;
   status="Mode maintenance non confirme : aucune reponse RTR 0x30E";emit changed();
  });
+ connect(&errorWatch,&QTimer::timeout,this,&Controller::expireErrors);errorWatch.start(500);
  connect(&sender,&QTimer::timeout,this,[this]{
   if(queue.isEmpty()) {sender.stop();return;}
   auto out=queue.dequeue();
@@ -163,7 +164,7 @@ void Controller::receive(quint32 id,const QByteArray &p) {
   temperatures[i]=double(*value)/(i==4?1000.0:10.0);
   seen[i]=QDateTime::currentMSecsSinceEpoch();
  }
- else if(id==0x105 && p.size()==1) {door=quint8(p[0])==3; if(quint8(p[0])==2 && alarm==Protocol::errorText(0x52)){sound(false);alarm.clear();}}
+ else if(id==0x105 && p.size()==1) {door=quint8(p[0])==3; if(quint8(p[0])==2 && alarm==Protocol::errorText(0x52)){sound(false);alarm.clear();activeErrors.remove(0x52);}}
  else if((id==0x106 || id==0x107) && p.size()==1) packs[id-0x106]=quint8(p[0]);
  else if(id==0x30e && p.size()==1) {
   if(quint8(p[0])>1)return;
@@ -175,7 +176,7 @@ void Controller::receive(quint32 id,const QByteArray &p) {
   }
  }
  else if(id==1 && p.size()==1) {
-  auto code=quint8(p[0]); alarm=Protocol::errorText(code);alarmLog.prepend(QDateTime::currentDateTime().toString("dd/MM HH:mm:ss")+"   "+alarm);
+  auto code=quint8(p[0]); activeErrors[code]=QDateTime::currentMSecsSinceEpoch(); alarm=Protocol::errorText(code);alarmLog.prepend(QDateTime::currentDateTime().toString("dd/MM HH:mm:ss")+"   "+alarm);
   while(alarmLog.size()>500)alarmLog.removeLast();if(code==0x52)sound(true);
  }
  else if(id>=0x300 && id<=0x30c) {
@@ -206,7 +207,32 @@ void Controller::receive(quint32 id,const QByteArray &p) {
  emit changed();
 }
 bool Controller::fresh(int i) const {return seen[i]>0 && QDateTime::currentMSecsSinceEpoch()-seen[i]<6000;}
-double Controller::mean() const {if(!fresh(0)||!fresh(1)||!fresh(2))return std::numeric_limits<double>::quiet_NaN();return std::round((temperatures[0]+temperatures[1]+temperatures[2])/3*10)/10;}
+bool Controller::sensorFault(int i) const {
+ // 0x21..0x24 = sensor fault CAP1, CAP2, CAP3, EVA.
+ const auto it=activeErrors.constFind(quint8(0x21+i));
+ return it!=activeErrors.constEnd() && QDateTime::currentMSecsSinceEpoch()-it.value()<errorTimeoutMs;
+}
+double Controller::mean() const {
+ // A faulty probe is left out; a healthy probe that went silent still invalidates the mean.
+ double sum=0;int count=0;
+ for(int i=0;i<3;++i){
+  if(sensorFault(i))continue;
+  if(!fresh(i))return std::numeric_limits<double>::quiet_NaN();
+  sum+=temperatures[i];++count;
+ }
+ return count?std::round(sum/count*10)/10:std::numeric_limits<double>::quiet_NaN();
+}
+void Controller::expireErrors() {
+ const auto now=QDateTime::currentMSecsSinceEpoch();bool ended=false;
+ for(auto it=activeErrors.begin();it!=activeErrors.end();){
+  if(now-it.value()<errorTimeoutMs){++it;continue;}
+  if(it.key()==0x52)sound(false);
+  // The banner shows the last error received, so it can only outlive the other active ones.
+  if(alarm==Protocol::errorText(it.key()))alarm.clear();
+  it=activeErrors.erase(it);ended=true;
+ }
+ if(ended)emit changed();
+}
 void Controller::requestMaintenance() {
  maintenanceActive=false;waitingMaintenance=false;maintenanceDeadline.stop();
  enqueue(0x30e,QByteArray(1,0),true);emit changed();

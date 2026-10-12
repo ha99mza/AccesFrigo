@@ -33,6 +33,7 @@ private:
  QTimer *sampleTimer=nullptr;
  std::array<QVariant,15> values{};
  std::array<qint64,15> seen{};
+ std::array<qint64,3> faults{}; // last 0x21..0x23 fault per probe
  QStringList errors;
  QJsonObject cloudContext;
  QString databasePath,cloudSerial,cloudAccessToken,cloudApiToken;

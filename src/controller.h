@@ -5,6 +5,7 @@
 #include <QTimer>
 #include <QQueue>
 #include <QSet>
+#include <QMap>
 #include <QDateTime>
 #include "canrecovery.h"
 class Controller : public QObject {
@@ -21,7 +22,9 @@ public:
  void acknowledge();
  bool openDoor();
  bool fresh(int index) const;
+ bool sensorFault(int index) const;
  double mean() const;
+ qint64 errorTimeoutMs=Protocol::errorHoldMs;
  Protocol::Config config{};
  std::array<double,5> temperatures{};
  std::array<qint64,5> seen{};
@@ -43,7 +46,9 @@ private:
  QCanBusDevice *device=nullptr;
  CanRecovery *recovery=nullptr;
  QString interfaceName, settingsFile;
- QTimer sender, deadline, simulator, maintenanceDeadline;
+ QTimer sender, deadline, simulator, maintenanceDeadline, errorWatch;
+ QMap<quint8,qint64> activeErrors; // code -> last reception
+ void expireErrors();
  QQueue<Out> queue;
  QSet<int> received;
  Protocol::Config candidate{};
