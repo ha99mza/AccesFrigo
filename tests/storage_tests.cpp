@@ -102,6 +102,20 @@ private slots:
    QVERIFY(q.next());QCOMPARE(q.value(0).toDouble(),15.0);}
   writer.close();
  }
+ void cleanupKeepsLastThirtyDays(){
+  QTemporaryDir dir;const auto path=dir.filePath("purge.sqlite");const qint64 day=86400000,now=QDateTime::currentMSecsSinceEpoch();
+  auto count=[](HistoryWriter &w){QSqlQuery q(w.db);return q.exec("SELECT count(*) FROM releves")&&q.next()?q.value(0).toInt():-1;};
+  {
+   HistoryWriter writer;writer.open(path);writer.sampleTimer->stop();
+   QCOMPARE(writer.purgeTimer->interval(),3600000);QVERIFY(writer.purgeTimer->isActive());
+   for(qint64 age:{qint64(0),29*day,30*day+60000,400*day})writer.snapshot(now-age);
+   QCOMPARE(count(writer),4);writer.purge();QCOMPARE(count(writer),2);
+   {QSqlQuery q(writer.db);QVERIFY(q.exec("SELECT min(timestamp_ms) FROM releves"));QVERIFY(q.next());QCOMPARE(q.value(0).toLongLong(),now-29*day);}
+   writer.snapshot(now-31*day);writer.close();
+  }
+  HistoryWriter reopened;reopened.open(path);reopened.sampleTimer->stop();QCOMPARE(count(reopened),2); // Cleanup also runs at startup.
+  reopened.close();
+ }
  void cloudRejectsUnconfirmedResponses_data(){
   QTest::addColumn<int>("status");QTest::addColumn<QByteArray>("response");
   QTest::newRow("HTTP failure despite success body")<<503<<QByteArray("{\"success\":true}");
@@ -128,7 +142,7 @@ private slots:
    QVERIFY(q.exec("INSERT INTO releves VALUES(1,1000,'old',4.5)"));
   }
   QSqlDatabase::removeDatabase("old-cloud");
-  HistoryWriter writer;writer.open(path);QVERIFY(writer.db.isOpen());writer.sampleTimer->stop();
+  HistoryWriter writer;writer.retentionDays=0;writer.open(path);QVERIFY(writer.db.isOpen());writer.sampleTimer->stop();
   {QSqlQuery q(writer.db);QVERIFY(q.exec("SELECT temperature_moyenne,sent FROM releves"));QVERIFY(q.next());QCOMPARE(q.value(0).toDouble(),4.5);QCOMPARE(q.value(1).toInt(),0);}
   writer.close();
  }
@@ -230,7 +244,7 @@ private slots:
    QVERIFY(q.value("porte_ouverte").isNull());QVERIFY(q.value("erreur").isNull());
   }
   QVERIFY(errors.isEmpty());writer.close();
-  HistoryWriter reopened;reopened.open(path);reopened.sampleTimer->stop();
+  HistoryWriter reopened;reopened.retentionDays=0;reopened.open(path);reopened.sampleTimer->stop(); // Test rows are dated 1970.
   {QSqlQuery q(reopened.db);QVERIFY(q.exec("SELECT count(*) FROM releves"));QVERIFY(q.next());QCOMPARE(q.value(0).toInt(),4);}
   reopened.close();
  }

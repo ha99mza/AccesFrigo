@@ -34,6 +34,16 @@ void HistoryWriter::open(const QString &path) {
  sampleTimer=new QTimer(this);sampleTimer->setInterval(30000);sampleTimer->setTimerType(Qt::PreciseTimer);
  connect(sampleTimer,&QTimer::timeout,this,[this]{snapshot(QDateTime::currentMSecsSinceEpoch());});
  sampleTimer->start();
+ // Cleanup service: once at startup, then every hour.
+ purgeTimer=new QTimer(this);purgeTimer->setInterval(3600000);
+ connect(purgeTimer,&QTimer::timeout,this,&HistoryWriter::purge);
+ purgeTimer->start();purge();
+}
+void HistoryWriter::purge(){
+ if(!db.isOpen()||retentionDays<=0)return;
+ QSqlQuery q(db);q.prepare("DELETE FROM releves WHERE timestamp_ms<?");
+ q.addBindValue(QDateTime::currentMSecsSinceEpoch()-qint64(retentionDays)*86400000);
+ if(!q.exec())emit error("Nettoyage de l'historique impossible : "+q.lastError().text());
 }
 void HistoryWriter::append(quint32 id,const QByteArray &p,qint64 timestamp) {
  auto set=[&](int i,QVariant value){values[i]=value;seen[i]=timestamp;};
@@ -98,6 +108,7 @@ void HistoryWriter::close(){
  if(reply){reply->disconnect(this);reply->abort();reply->deleteLater();reply=nullptr;}
  cloudLock.reset();
  if(sampleTimer)sampleTimer->stop();
+ if(purgeTimer)purgeTimer->stop();
  if(!db.isValid())return;
  auto name=db.connectionName();db.close();db=QSqlDatabase();QSqlDatabase::removeDatabase(name);
 }

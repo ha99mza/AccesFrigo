@@ -30,7 +30,9 @@ signals:
 private:
  friend class StorageTests;
  QSqlDatabase db;
- QTimer *sampleTimer=nullptr;
+ QTimer *sampleTimer=nullptr,*purgeTimer=nullptr;
+ int retentionDays=30; // releves older than this are deleted; 0 keeps everything
+ void purge();
  std::array<QVariant,15> values{};
  std::array<qint64,15> seen{};
  std::array<qint64,3> faults{}; // last 0x21..0x23 fault per probe
